@@ -20,6 +20,15 @@ export { withSoftDeletes, SoftDeletes } from './Model/SoftDeletes';
 
 // Schema
 export { Schema, TableBlueprint, ColumnDefinition, ForeignKeyDefinition } from './Schema/Schema';
+export { SchemaBuilder } from './Schema/SchemaBuilder';
+
+// Migrations
+export { Migration } from './Migrations/Migration';
+export { Migrator } from './Migrations/Migrator';
+
+// Seeders
+export { Seeder } from './Seeders/Seeder';
+export { SeedRunner } from './Seeders/SeedRunner';
 
 // Contracts
 export type {

@@ -57,6 +57,11 @@ export interface Connection {
      * Get the underlying driver connection
      */
     getDriver(): any;
+
+    /**
+     * Get the schema grammar for this connection
+     */
+    getSchemaGrammar(): any;
 }
 
 /**

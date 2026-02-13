@@ -1,5 +1,6 @@
 import { DatabaseManager } from './DatabaseManager';
 import { QueryBuilder } from './Query/QueryBuilder';
+import { SchemaBuilder } from './Schema/SchemaBuilder';
 
 /**
  * Database facade - static interface to the database manager
@@ -29,6 +30,13 @@ export class Database {
      */
     static table(tableName: string, connectionName?: string): QueryBuilder {
         return Database.getManager().table(tableName, connectionName);
+    }
+
+    /**
+     * Get a schema builder instance
+     */
+    static schema(connectionName?: string): SchemaBuilder {
+        return Database.getManager().schema(connectionName);
     }
 
     /**

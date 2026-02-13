@@ -84,4 +84,12 @@ export class MySQLConnection implements Connection {
     getDriver(): mysql.Pool {
         return this.pool;
     }
+
+    /**
+     * Get the schema grammar for this connection
+     */
+    getSchemaGrammar() {
+        const { MySQLGrammar } = require('../Schema/Grammars/MySQLGrammar');
+        return new MySQLGrammar();
+    }
 }

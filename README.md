@@ -20,6 +20,8 @@ This package powers **DB facade**, **Models**, **Migrations**, and **Query Build
 - ✅ Query Scopes
 - ✅ Soft Deletes
 - ✅ DB Facade (`DB.table()`)
+- ✅ Migrations & Schema Builder
+- ✅ Database Seeders
 - ✅ Framework-integrated configuration
 - ✅ TypeScript-first design
 - ✅ Works with native ArikaJS DI container
@@ -267,20 +269,6 @@ database/
 ## 🚧 Planned Features (Roadmap)
 
 The following features are designed and planned and will be introduced incrementally **without breaking existing APIs**.
-
-### 🔄 Migrations & Schema Builder
-```bash
-arika make:migration create_users_table
-arika migrate
-arika migrate:rollback
-arika migrate:fresh
-```
-
-### 🌱 Database Seeders
-```bash
-arika make:seeder UserSeeder
-arika db:seed
-```
 
 ### 🎪 Model Events
 ```typescript

@@ -3,6 +3,7 @@ import { MySQLConnection } from './Connections/MySQLConnection';
 import { PostgreSQLConnection } from './Connections/PostgreSQLConnection';
 import { SQLiteConnection } from './Connections/SQLiteConnection';
 import { QueryBuilder } from './Query/QueryBuilder';
+import { SchemaBuilder } from './Schema/SchemaBuilder';
 
 /**
  * Database manager - handles connections and query builders
@@ -42,6 +43,14 @@ export class DatabaseManager {
     table(tableName: string, connectionName?: string): QueryBuilder {
         const connection = this.connection(connectionName);
         return new QueryBuilder(connection).table(tableName);
+    }
+
+    /**
+     * Get a schema builder instance
+     */
+    schema(connectionName?: string): SchemaBuilder {
+        const connection = this.connection(connectionName);
+        return new SchemaBuilder(connection);
     }
 
     /**

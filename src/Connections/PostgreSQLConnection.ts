@@ -81,4 +81,12 @@ export class PostgreSQLConnection implements Connection {
     getDriver(): Pool {
         return this.pool;
     }
+
+    /**
+     * Get the schema grammar for this connection
+     */
+    getSchemaGrammar() {
+        const { PostgreSQLGrammar } = require('../Schema/Grammars/PostgreSQLGrammar');
+        return new PostgreSQLGrammar();
+    }
 }

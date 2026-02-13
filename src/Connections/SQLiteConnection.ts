@@ -109,4 +109,12 @@ export class SQLiteConnection implements Connection {
     async rollback(): Promise<void> {
         await this.query('ROLLBACK');
     }
+
+    /**
+     * Get the schema grammar for this connection
+     */
+    getSchemaGrammar() {
+        const { SQLiteGrammar } = require('../Schema/Grammars/SQLiteGrammar');
+        return new SQLiteGrammar();
+    }
 }
