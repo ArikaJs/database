@@ -72,6 +72,17 @@ export class Model {
     }
 
     /**
+     * Find a record by ID or throw an error
+     */
+    static async findOrFail<T extends Model>(this: typeof Model, id: any): Promise<T> {
+        const result = await this.find<T>(id);
+        if (!result) {
+            throw new Error(`${this.name} not found with ID ${id}`);
+        }
+        return result;
+    }
+
+    /**
      * Get all records
      */
     static async all<T extends Model>(this: typeof Model): Promise<T[]> {
