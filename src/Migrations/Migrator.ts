@@ -78,7 +78,8 @@ export class Migrator {
      * Ensure the migrations table exists
      */
     private async ensureMigrationsTable(): Promise<void> {
-        const grammar = this.db.connection().getSchemaGrammar().constructor.name;
+        const connection = await this.db.connection();
+        const grammar = connection.getSchemaGrammar().constructor.name;
         let createSql = '';
 
         if (grammar === 'MySQLGrammar') {
@@ -89,7 +90,7 @@ export class Migrator {
             createSql = `CREATE TABLE IF NOT EXISTS ${this.tableName} (id INTEGER PRIMARY KEY AUTOINCREMENT, migration TEXT, batch INTEGER)`;
         }
 
-        await this.db.connection().query(createSql);
+        await connection.query(createSql);
     }
 
     /**

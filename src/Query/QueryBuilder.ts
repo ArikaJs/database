@@ -12,9 +12,6 @@ interface WhereClause {
     boolean: 'and' | 'or';
 }
 
-/**
- * Query builder implementation
- */
 export class QueryBuilder implements QueryBuilderInterface {
     private tableName?: string;
     private selectColumns: string[] = ['*'];
@@ -22,8 +19,19 @@ export class QueryBuilder implements QueryBuilderInterface {
     private orderByColumns: Array<{ column: string; direction: 'asc' | 'desc' }> = [];
     private limitValue?: number;
     private offsetValue?: number;
+    private resolvedConnection: Connection | null = null;
 
-    constructor(private connection: Connection) { }
+    constructor(private connection: Connection | Promise<Connection>) { }
+
+    /**
+     * Get the resolved connection
+     */
+    private async getResolvedConnection(): Promise<Connection> {
+        if (!this.resolvedConnection) {
+            this.resolvedConnection = await this.connection;
+        }
+        return this.resolvedConnection;
+    }
 
     /**
      * Set the table for the query
@@ -166,7 +174,8 @@ export class QueryBuilder implements QueryBuilderInterface {
      */
     async get(): Promise<any[]> {
         const { sql, bindings } = this.buildSelectQuery();
-        return await this.connection.query(sql, bindings);
+        const connection = await this.getResolvedConnection();
+        return await connection.query(sql, bindings);
     }
 
     /**
@@ -191,7 +200,8 @@ export class QueryBuilder implements QueryBuilderInterface {
         const placeholders = values.map((_, i) => `?`).join(', ');
 
         const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
-        return await this.connection.query(sql, values);
+        const connection = await this.getResolvedConnection();
+        return await connection.query(sql, values);
     }
 
     /**
@@ -209,7 +219,8 @@ export class QueryBuilder implements QueryBuilderInterface {
         const { whereClause, bindings: whereBindings } = this.buildWhereClause();
         const sql = `UPDATE ${this.tableName} SET ${setClause}${whereClause}`;
 
-        const result = await this.connection.query(sql, [...values, ...whereBindings]);
+        const connection = await this.getResolvedConnection();
+        const result = await connection.query(sql, [...values, ...whereBindings]);
         return result.affectedRows || result.rowCount || 0;
     }
 
@@ -224,7 +235,8 @@ export class QueryBuilder implements QueryBuilderInterface {
         const { whereClause, bindings } = this.buildWhereClause();
         const sql = `DELETE FROM ${this.tableName}${whereClause}`;
 
-        const result = await this.connection.query(sql, bindings);
+        const connection = await this.getResolvedConnection();
+        const result = await connection.query(sql, bindings);
         return result.affectedRows || result.rowCount || 0;
     }
 
@@ -239,7 +251,8 @@ export class QueryBuilder implements QueryBuilderInterface {
         const { whereClause, bindings } = this.buildWhereClause();
         const sql = `SELECT COUNT(${column}) as count FROM ${this.tableName}${whereClause}`;
 
-        const result = await this.connection.query(sql, bindings);
+        const connection = await this.getResolvedConnection();
+        const result = await connection.query(sql, bindings);
         return parseInt(result[0].count);
     }
 

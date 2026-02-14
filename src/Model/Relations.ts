@@ -130,7 +130,7 @@ export class BelongsToMany<T extends Model = Model> extends Relation<T> {
         }
 
         const relatedTable = (this.related as any).table;
-        const connection = Database.connection((this.related as any).connection);
+        const connection = await Database.connection((this.related as any).connection);
 
         // Build the query with a join
         const sql = `

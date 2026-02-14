@@ -46,7 +46,7 @@ export class Database {
         callback: (trx: DatabaseManager) => Promise<T>,
         connectionName?: string
     ): Promise<T> {
-        return Database.getManager().transaction(callback, connectionName);
+        return await Database.getManager().transaction(callback, connectionName);
     }
 
     /**

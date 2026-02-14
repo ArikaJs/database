@@ -1,7 +1,4 @@
 import { Connection, ConnectionConfig, DatabaseConfig } from './Contracts/Database';
-import { MySQLConnection } from './Connections/MySQLConnection';
-import { PostgreSQLConnection } from './Connections/PostgreSQLConnection';
-import { SQLiteConnection } from './Connections/SQLiteConnection';
 import { QueryBuilder } from './Query/QueryBuilder';
 import { SchemaBuilder } from './Schema/SchemaBuilder';
 
@@ -19,7 +16,7 @@ export class DatabaseManager {
     /**
      * Get a connection by name
      */
-    connection(name?: string): Connection {
+    connection(name?: string): Connection | Promise<Connection> {
         const connectionName = name || this.config.default;
 
         if (this.connections.has(connectionName)) {
@@ -31,10 +28,12 @@ export class DatabaseManager {
             throw new Error(`Connection "${connectionName}" not configured`);
         }
 
-        const connection = this.createConnection(connectionConfig);
-        this.connections.set(connectionName, connection);
+        const connectionPromise = this.createConnection(connectionConfig).then(connection => {
+            this.connections.set(connectionName, connection);
+            return connection;
+        });
 
-        return connection;
+        return connectionPromise;
     }
 
     /**
@@ -50,7 +49,7 @@ export class DatabaseManager {
      */
     schema(connectionName?: string): SchemaBuilder {
         const connection = this.connection(connectionName);
-        return new SchemaBuilder(connection);
+        return new SchemaBuilder(connection as any);
     }
 
     /**
@@ -60,7 +59,7 @@ export class DatabaseManager {
         callback: (trx: DatabaseManager) => Promise<T>,
         connectionName?: string
     ): Promise<T> {
-        const connection = this.connection(connectionName);
+        const connection = await this.connection(connectionName);
 
         await connection.beginTransaction();
 
@@ -86,14 +85,20 @@ export class DatabaseManager {
     /**
      * Create a connection based on driver type
      */
-    private createConnection(config: ConnectionConfig): Connection {
+    private async createConnection(config: ConnectionConfig): Promise<Connection> {
         switch (config.driver) {
-            case 'mysql':
+            case 'mysql': {
+                const { MySQLConnection } = await import('./Connections/MySQLConnection');
                 return new MySQLConnection(config);
-            case 'pgsql':
+            }
+            case 'pgsql': {
+                const { PostgreSQLConnection } = await import('./Connections/PostgreSQLConnection');
                 return new PostgreSQLConnection(config);
-            case 'sqlite':
+            }
+            case 'sqlite': {
+                const { SQLiteConnection } = await import('./Connections/SQLiteConnection');
                 return new SQLiteConnection(config);
+            }
             default:
                 throw new Error(`Unsupported database driver: ${config.driver}`);
         }
