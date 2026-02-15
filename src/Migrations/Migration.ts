@@ -6,10 +6,13 @@ export abstract class Migration {
     /**
      * Run the migrations.
      */
-    public abstract up(): Promise<void>;
+    /**
+     * Run the migrations.
+     */
+    public abstract up(schema?: any): Promise<void>;
 
     /**
      * Reverse the migrations.
      */
-    public abstract down(): Promise<void>;
+    public abstract down(schema?: any): Promise<void>;
 }
