@@ -12,6 +12,43 @@ export class SQLiteGrammar extends Grammar {
         return `CREATE TABLE ${blueprint.tableName} (\n  ${columns.join(',\n  ')}\n)`;
     }
 
+    public compileAlter(blueprint: TableBlueprint): string[] {
+        const statements: string[] = [];
+        const alterBase = `ALTER TABLE ${blueprint.tableName}`;
+
+        // 1. Drop columns (supported in recent SQLite versions >= 3.35.0)
+        blueprint.getDropColumns().forEach(name => {
+            statements.push(`${alterBase} DROP COLUMN ${name}`);
+        });
+
+        // 2. Add columns
+        blueprint.getColumns().forEach(column => {
+            statements.push(`${alterBase} ADD COLUMN ${this.compileColumn(column)}`);
+        });
+
+        // 3. Drop indexes
+        blueprint.getDropIndexes().forEach(name => {
+            statements.push(`DROP INDEX IF EXISTS ${name}`);
+        });
+
+        // 4. Add indexes
+        blueprint.getIndexes().forEach(index => {
+            const indexName = index.name || `${blueprint.tableName}_${index.columns.join('_')}_index`;
+            if (index.unique) {
+                statements.push(`CREATE UNIQUE INDEX ${indexName} ON ${blueprint.tableName} (${index.columns.join(', ')})`);
+            } else {
+                statements.push(`CREATE INDEX ${indexName} ON ${blueprint.tableName} (${index.columns.join(', ')})`);
+            }
+        });
+
+        // Warn internally if dropping foreign keys, as SQLite ALTER TABLE doesn't natively drop constraints
+        if (blueprint.getDropForeignKeys && blueprint.getDropForeignKeys().length > 0) {
+            console.warn('SQLite does not natively support dropping foreign keys via ALTER TABLE. Please recreate the table.');
+        }
+
+        return statements;
+    }
+
     public compileDrop(tableName: string): string {
         return `DROP TABLE ${tableName}`;
     }

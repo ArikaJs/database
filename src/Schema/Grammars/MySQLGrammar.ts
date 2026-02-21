@@ -38,6 +38,54 @@ export class MySQLGrammar extends Grammar {
         return `CREATE TABLE ${blueprint.tableName} (\n  ${columns.join(',\n  ')}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`;
     }
 
+    public compileAlter(blueprint: TableBlueprint): string[] {
+        const statements: string[] = [];
+        const alterBase = `ALTER TABLE ${blueprint.tableName}`;
+
+        // 1. Drop columns & indexes
+        const dropColumns = blueprint.getDropColumns().map(name => `DROP COLUMN ${name}`);
+        const dropIndexes = blueprint.getDropIndexes().map(name => `DROP INDEX ${name}`);
+        const dropForeignKeys = blueprint.getDropForeignKeys ? blueprint.getDropForeignKeys().map(name => `DROP FOREIGN KEY ${name}`) : [];
+
+        const dropOperations = [...dropColumns, ...dropIndexes, ...dropForeignKeys];
+        if (dropOperations.length > 0) {
+            statements.push(`${alterBase} ${dropOperations.join(', ')}`);
+        }
+
+        // 2. Add columns
+        const addColumns = blueprint.getColumns().map(column => `ADD COLUMN ${this.compileColumn(column)}`);
+        if (addColumns.length > 0) {
+            statements.push(`${alterBase} ${addColumns.join(', ')}`);
+        }
+
+        // 3. Add indexes
+        const addIndexes = blueprint.getIndexes().map(index => {
+            if (index.unique) {
+                return `ADD UNIQUE INDEX ${index.name || ''} (${index.columns.join(', ')})`;
+            } else {
+                return `ADD INDEX ${index.name || ''} (${index.columns.join(', ')})`;
+            }
+        });
+
+        if (addIndexes.length > 0) {
+            statements.push(`${alterBase} ${addIndexes.join(', ')}`);
+        }
+
+        // 4. Add foreign keys
+        const addForeignKeys = blueprint.getForeignKeys().map(fk => {
+            let sql = `ADD CONSTRAINT fk_${blueprint.tableName}_${fk.column} FOREIGN KEY (${fk.column}) REFERENCES ${fk.referencedTable}(${fk.referencedColumn})`;
+            if (fk.onDeleteAction) sql += ` ON DELETE ${fk.onDeleteAction.toUpperCase()}`;
+            if (fk.onUpdateAction) sql += ` ON UPDATE ${fk.onUpdateAction.toUpperCase()}`;
+            return sql;
+        });
+
+        if (addForeignKeys.length > 0) {
+            statements.push(`${alterBase} ${addForeignKeys.join(', ')}`);
+        }
+
+        return statements;
+    }
+
     public compileDrop(tableName: string): string {
         return `DROP TABLE ${tableName}`;
     }

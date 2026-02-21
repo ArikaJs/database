@@ -6,21 +6,37 @@ import { Connection, ConnectionConfig } from '../Contracts/Database';
  */
 export class SQLiteConnection implements Connection {
     private db: Database.Database | null = null;
+    private writeDb: Database.Database | null = null;
     private config: ConnectionConfig;
 
     constructor(config: ConnectionConfig) {
         this.config = config;
+        this.connect();
     }
 
     /**
      * Connect to the database
      */
     async connect(): Promise<void> {
-        if (this.db) {
-            return;
+        let readConfig = this.config;
+
+        if (this.config.read) {
+            if (Array.isArray(this.config.read)) {
+                const randomRead = this.config.read[Math.floor(Math.random() * this.config.read.length)];
+                readConfig = { ...this.config, ...randomRead };
+            } else {
+                readConfig = { ...this.config, ...this.config.read };
+            }
         }
 
-        this.db = new Database(this.config.database || ':memory:');
+        if (!this.db) {
+            this.db = new Database(readConfig.database || ':memory:');
+        }
+
+        if (this.config.write && !this.writeDb) {
+            const writeConfig = { ...this.config, ...this.config.write };
+            this.writeDb = new Database(writeConfig.database || ':memory:');
+        }
     }
 
     /**
@@ -30,6 +46,10 @@ export class SQLiteConnection implements Connection {
         if (this.db) {
             this.db.close();
             this.db = null;
+        }
+        if (this.writeDb) {
+            this.writeDb.close();
+            this.writeDb = null;
         }
     }
 
@@ -41,11 +61,14 @@ export class SQLiteConnection implements Connection {
             await this.connect();
         }
 
+        const isWriteOperation = /^\s*(?:insert|update|delete|create|alter|drop|truncate|replace)/i.test(sql);
+        const connection = (isWriteOperation && this.writeDb) ? this.writeDb : this.db!;
+
         try {
-            const stmt = this.db!.prepare(sql);
+            const stmt = connection.prepare(sql);
 
             // Check if it's a SELECT query
-            if (sql.trim().toLowerCase().startsWith('select')) {
+            if (!isWriteOperation && sql.trim().toLowerCase().startsWith('select')) {
                 return stmt.all(...bindings);
             }
 

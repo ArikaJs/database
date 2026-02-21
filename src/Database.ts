@@ -1,6 +1,10 @@
 import { DatabaseManager } from './DatabaseManager';
 import { QueryBuilder } from './Query/QueryBuilder';
+import { Expression } from './Query/Expression';
 import { SchemaBuilder } from './Schema/SchemaBuilder';
+import { QueryLogger } from './Query/QueryLogger';
+import { Connection } from './Contracts/Database';
+import { TransactionManager } from './Transactions/TransactionManager';
 
 /**
  * Database facade - static interface to the database manager
@@ -40,13 +44,48 @@ export class Database {
     }
 
     /**
-     * Execute a transaction
+     * Execute a callback within a transaction (nested savepoints supported)
      */
     static async transaction<T>(
-        callback: (trx: DatabaseManager) => Promise<T>,
+        callback: (trx: Connection) => Promise<T>,
         connectionName?: string
     ): Promise<T> {
         return await Database.getManager().transaction(callback, connectionName);
+    }
+
+    /**
+     * Get a TransactionManager for manual begin/commit/rollback control
+     */
+    static async getTransactionManager(connectionName?: string): Promise<TransactionManager> {
+        return Database.getManager().getTransactionManager(connectionName);
+    }
+
+    /**
+     * Enable query logging
+     */
+    static enableQueryLog(): void {
+        QueryLogger.enable();
+    }
+
+    /**
+     * Disable query logging
+     */
+    static disableQueryLog(): void {
+        QueryLogger.disable();
+    }
+
+    /**
+     * Get all logged queries
+     */
+    static getQueryLog() {
+        return QueryLogger.getLog();
+    }
+
+    /**
+     * Flush (clear) the query log
+     */
+    static flushQueryLog(): void {
+        QueryLogger.flush();
     }
 
     /**
@@ -54,6 +93,13 @@ export class Database {
      */
     static connection(name?: string) {
         return Database.getManager().connection(name);
+    }
+
+    /**
+     * Create a raw SQL expression
+     */
+    static raw(value: string | number): Expression {
+        return new Expression(value);
     }
 
     /**

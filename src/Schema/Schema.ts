@@ -97,6 +97,7 @@ export class TableBlueprint implements Blueprint {
     private indexes: Array<{ columns: string[]; name?: string; unique: boolean }> = [];
     private dropColumns: string[] = [];
     private dropIndexes: string[] = [];
+    private dropForeignKeys: string[] = [];
 
     constructor(public tableName: string) { }
 
@@ -201,6 +202,10 @@ export class TableBlueprint implements Blueprint {
         this.dropIndexes.push(name);
     }
 
+    dropForeignKey(name: string): void {
+        this.dropForeignKeys.push(name);
+    }
+
     /**
      * Get all columns
      */
@@ -234,6 +239,13 @@ export class TableBlueprint implements Blueprint {
      */
     getDropIndexes(): string[] {
         return this.dropIndexes;
+    }
+
+    /**
+     * Get foreign keys to drop
+     */
+    getDropForeignKeys(): string[] {
+        return this.dropForeignKeys;
     }
 }
 

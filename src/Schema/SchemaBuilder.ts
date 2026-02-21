@@ -30,6 +30,24 @@ export class SchemaBuilder {
     }
 
     /**
+     * Modify an existing table on the schema
+     */
+    public async table(tableName: string, callback: SchemaCallback): Promise<void> {
+        const blueprint = Schema.table(tableName, callback);
+        const connection = await this.getResolvedConnection();
+        const grammar = connection.getSchemaGrammar();
+
+        if (typeof grammar.compileAlter !== 'function') {
+            throw new Error(`The active schema grammar does not support table alterations.`);
+        }
+
+        const statements = grammar.compileAlter(blueprint) as string[];
+        for (const sql of statements) {
+            await connection.query(sql);
+        }
+    }
+
+    /**
      * Drop a table from the schema
      */
     public async drop(tableName: string): Promise<void> {

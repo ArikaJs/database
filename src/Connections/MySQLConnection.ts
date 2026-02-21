@@ -6,28 +6,66 @@ import { Connection, ConnectionConfig } from '../Contracts/Database';
  */
 export class MySQLConnection implements Connection {
     private pool: mysql.Pool;
+    private writePool?: mysql.Pool;
     private transactionConnection?: mysql.PoolConnection;
 
     constructor(config: ConnectionConfig) {
+        // Build Read Pool
+        let readConfig = config;
+
+        // Pick one host randomly if read is an array pool
+        if (config.read) {
+            if (Array.isArray(config.read)) {
+                const randomRead = config.read[Math.floor(Math.random() * config.read.length)];
+                readConfig = { ...config, ...randomRead };
+            } else {
+                readConfig = { ...config, ...config.read };
+            }
+        }
+
         this.pool = mysql.createPool({
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password,
-            database: config.database,
-            charset: config.charset || 'utf8mb4',
-            timezone: config.timezone || '+00:00',
+            host: readConfig.host,
+            port: readConfig.port,
+            user: readConfig.username,
+            password: readConfig.password,
+            database: readConfig.database,
+            charset: readConfig.charset || 'utf8mb4',
+            timezone: readConfig.timezone || '+00:00',
             waitForConnections: true,
-            connectionLimit: config.pool?.max || 10,
+            connectionLimit: readConfig.pool?.max || 10,
             queueLimit: 0,
         });
+
+        // Build Write Pool (if explicitly specified)
+        if (config.write) {
+            const writeConfig = { ...config, ...config.write };
+            this.writePool = mysql.createPool({
+                host: writeConfig.host,
+                port: writeConfig.port,
+                user: writeConfig.username,
+                password: writeConfig.password,
+                database: writeConfig.database,
+                charset: writeConfig.charset || 'utf8mb4',
+                timezone: writeConfig.timezone || '+00:00',
+                waitForConnections: true,
+                connectionLimit: writeConfig.pool?.max || 10,
+                queueLimit: 0,
+            });
+        }
     }
 
     /**
      * Execute a raw SQL query
      */
     async query(sql: string, bindings: any[] = []): Promise<any> {
-        const connection = this.transactionConnection || this.pool;
+        let connection: mysql.Pool | mysql.PoolConnection | undefined = this.transactionConnection;
+
+        if (!connection) {
+            // Determine operation type (read vs write) to load balance pools
+            const isWriteOperation = /^\s*(?:insert|update|delete|create|alter|drop|truncate|replace)/i.test(sql);
+            connection = (isWriteOperation && this.writePool) ? this.writePool : this.pool;
+        }
+
         const [rows] = await connection.execute(sql, bindings);
         return rows;
     }
@@ -39,7 +77,8 @@ export class MySQLConnection implements Connection {
         if (this.transactionConnection) {
             throw new Error('Transaction already started');
         }
-        this.transactionConnection = await this.pool.getConnection();
+        const masterPool = this.writePool || this.pool;
+        this.transactionConnection = await masterPool.getConnection();
         await this.transactionConnection.beginTransaction();
     }
 
@@ -74,6 +113,9 @@ export class MySQLConnection implements Connection {
         if (this.transactionConnection) {
             this.transactionConnection.release();
             this.transactionConnection = undefined;
+        }
+        if (this.writePool) {
+            await this.writePool.end();
         }
         await this.pool.end();
     }

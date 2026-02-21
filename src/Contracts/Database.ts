@@ -2,7 +2,7 @@
  * Database connection configuration
  */
 export interface ConnectionConfig {
-    driver: 'mysql' | 'pgsql' | 'sqlite';
+    driver: 'mysql' | 'pgsql' | 'sqlite' | 'mongodb';
     host?: string;
     port?: number;
     database: string;
@@ -14,6 +14,8 @@ export interface ConnectionConfig {
         min?: number;
         max?: number;
     };
+    read?: Partial<ConnectionConfig> | Partial<ConnectionConfig>[];
+    write?: Partial<ConnectionConfig>;
 }
 
 /**
@@ -104,9 +106,34 @@ export interface QueryBuilder {
     whereNotNull(column: string): this;
 
     /**
+     * Add a raw where clause
+     */
+    whereRaw(sql: string, bindings?: any[]): this;
+
+    /**
+     * Add a raw OR where clause
+     */
+    orWhereRaw(sql: string, bindings?: any[]): this;
+
+    /**
+     * Add an exists clause
+     */
+    whereExists(callback: (query: any) => void, boolean?: 'and' | 'or', not?: boolean): this;
+
+    /**
+     * Add a not exists clause
+     */
+    whereNotExists(callback: (query: any) => void, boolean?: 'and' | 'or'): this;
+
+    /**
      * Add a select clause
      */
-    select(...columns: string[]): this;
+    select(...columns: (string | any)[]): this;
+
+    /**
+     * Add a raw select clause
+     */
+    selectRaw(sql: string): this;
 
     /**
      * Add an order by clause
@@ -134,9 +161,29 @@ export interface QueryBuilder {
     first(): Promise<any | null>;
 
     /**
-     * Insert a record
+     * Paginate the query results
      */
-    insert(data: Record<string, any>): Promise<any>;
+    paginate(page?: number, perPage?: number, path?: string): Promise<{ data: any[], meta: any, links: any }>;
+
+    /**
+     * Paginate without counting total pages
+     */
+    simplePaginate(page?: number, perPage?: number, path?: string): Promise<{ data: any[], meta: any, links: any }>;
+
+    /**
+     * Cursor paginate for high performance
+     */
+    cursorPaginate(cursor?: string | null, perPage?: number, cursorColumn?: string, path?: string): Promise<{ data: any[], meta: any, links: any }>;
+
+    /**
+     * Chunk the query results
+     */
+    chunk(count: number, callback: (results: any[], page: number) => Promise<boolean | void>): Promise<boolean>;
+
+    /**
+     * Insert a record or multiple records
+     */
+    insert(data: Record<string, any> | Record<string, any>[]): Promise<any>;
 
     /**
      * Update records
@@ -152,4 +199,23 @@ export interface QueryBuilder {
      * Get the count of records
      */
     count(column?: string): Promise<number>;
+    /**
+     * Cache the query results
+     */
+    cache(ttl: number, key?: string): this;
+}
+
+/**
+ * Cache store implementation used by the query builder
+ */
+export interface QueryCache {
+    /**
+     * Get an item from the cache, or execute the given closure and store the result
+     */
+    remember<T>(key: string, ttl: number, callback: () => Promise<T>): Promise<T>;
+
+    /**
+     * Remove an item from the cache
+     */
+    forget(key: string): Promise<boolean>;
 }

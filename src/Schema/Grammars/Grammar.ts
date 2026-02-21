@@ -11,6 +11,12 @@ export abstract class Grammar {
     public abstract compileCreate(blueprint: TableBlueprint): string;
 
     /**
+     * Compile the alter table SQL (adding/dropping/modifying columns and indexes)
+     * Returns an array of SQL statements since some engines require multiple statements for altering.
+     */
+    public abstract compileAlter(blueprint: TableBlueprint): string[];
+
+    /**
      * Compile the drop table SQL
      */
     public abstract compileDrop(tableName: string): string;

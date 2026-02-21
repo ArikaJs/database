@@ -1,6 +1,7 @@
-import { Connection, ConnectionConfig, DatabaseConfig } from './Contracts/Database';
+import { Connection, ConnectionConfig, DatabaseConfig, QueryCache } from './Contracts/Database';
 import { QueryBuilder } from './Query/QueryBuilder';
 import { SchemaBuilder } from './Schema/SchemaBuilder';
+import { TransactionManager } from './Transactions/TransactionManager';
 
 /**
  * Database manager - handles connections and query builders
@@ -8,6 +9,7 @@ import { SchemaBuilder } from './Schema/SchemaBuilder';
 export class DatabaseManager {
     private connections: Map<string, Connection> = new Map();
     private config: DatabaseConfig;
+    private cacheStore?: QueryCache;
 
     constructor(config: DatabaseConfig) {
         this.config = config;
@@ -53,24 +55,37 @@ export class DatabaseManager {
     }
 
     /**
-     * Execute a transaction
+     * Execute a callback within a transaction (nested savepoints supported)
      */
     async transaction<T>(
-        callback: (trx: DatabaseManager) => Promise<T>,
+        callback: (trx: Connection) => Promise<T>,
         connectionName?: string
     ): Promise<T> {
         const connection = await this.connection(connectionName);
+        const txManager = new TransactionManager(connection);
+        return txManager.transaction(callback);
+    }
 
-        await connection.beginTransaction();
+    /**
+     * Get a TransactionManager for manual begin/commit/rollback control
+     */
+    async getTransactionManager(connectionName?: string): Promise<TransactionManager> {
+        const connection = await this.connection(connectionName);
+        return new TransactionManager(connection);
+    }
 
-        try {
-            const result = await callback(this);
-            await connection.commit();
-            return result;
-        } catch (error) {
-            await connection.rollback();
-            throw error;
-        }
+    /**
+     * Set a query cache implementation
+     */
+    setCache(cache: QueryCache): void {
+        this.cacheStore = cache;
+    }
+
+    /**
+     * Get the configured query cache store
+     */
+    getCache(): QueryCache | undefined {
+        return this.cacheStore;
     }
 
     /**
@@ -98,6 +113,10 @@ export class DatabaseManager {
             case 'sqlite': {
                 const { SQLiteConnection } = await import('./Connections/SQLiteConnection');
                 return new SQLiteConnection(config);
+            }
+            case 'mongodb': {
+                const { MongoDBConnection } = await import('./Connections/MongoDBConnection');
+                return new MongoDBConnection(config);
             }
             default:
                 throw new Error(`Unsupported database driver: ${config.driver}`);

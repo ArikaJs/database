@@ -6,25 +6,60 @@ import { Connection, ConnectionConfig } from '../Contracts/Database';
  */
 export class PostgreSQLConnection implements Connection {
     private pool: Pool;
+    private writePool?: Pool;
     private transactionClient?: PoolClient;
 
     constructor(config: ConnectionConfig) {
+        // Build Read Pool
+        let readConfig = config;
+
+        // Pick one host randomly if read is an array pool
+        if (config.read) {
+            if (Array.isArray(config.read)) {
+                const randomRead = config.read[Math.floor(Math.random() * config.read.length)];
+                readConfig = { ...config, ...randomRead };
+            } else {
+                readConfig = { ...config, ...config.read };
+            }
+        }
+
         this.pool = new Pool({
-            host: config.host,
-            port: config.port,
-            user: config.username,
-            password: config.password,
-            database: config.database,
-            min: config.pool?.min || 0,
-            max: config.pool?.max || 10,
+            host: readConfig.host,
+            port: readConfig.port,
+            user: readConfig.username,
+            password: readConfig.password,
+            database: readConfig.database,
+            min: readConfig.pool?.min || 0,
+            max: readConfig.pool?.max || 10,
         });
+
+        // Build Write Pool (if explicitly specified)
+        if (config.write) {
+            const writeConfig = { ...config, ...config.write };
+            this.writePool = new Pool({
+                host: writeConfig.host,
+                port: writeConfig.port,
+                user: writeConfig.username,
+                password: writeConfig.password,
+                database: writeConfig.database,
+                min: writeConfig.pool?.min || 0,
+                max: writeConfig.pool?.max || 10,
+            });
+        }
     }
 
     /**
      * Execute a raw SQL query
      */
     async query(sql: string, bindings: any[] = []): Promise<any> {
-        const client = this.transactionClient || this.pool;
+        let client: Pool | PoolClient | undefined = this.transactionClient;
+
+        if (!client) {
+            // Determine operation type (read vs write) to load balance pools
+            const isWriteOperation = /^\s*(?:insert|update|delete|create|alter|drop|truncate|replace)/i.test(sql);
+            client = (isWriteOperation && this.writePool) ? this.writePool : this.pool;
+        }
+
         const result = await client.query(sql, bindings);
         return result.rows;
     }
@@ -36,7 +71,8 @@ export class PostgreSQLConnection implements Connection {
         if (this.transactionClient) {
             throw new Error('Transaction already started');
         }
-        this.transactionClient = await this.pool.connect();
+        const masterPool = this.writePool || this.pool;
+        this.transactionClient = await masterPool.connect();
         await this.transactionClient.query('BEGIN');
     }
 
@@ -71,6 +107,9 @@ export class PostgreSQLConnection implements Connection {
         if (this.transactionClient) {
             this.transactionClient.release();
             this.transactionClient = undefined;
+        }
+        if (this.writePool) {
+            await this.writePool.end();
         }
         await this.pool.end();
     }

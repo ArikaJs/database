@@ -1,6 +1,12 @@
 import { Database } from '../Database';
 import { QueryBuilder } from '../Query/QueryBuilder';
-import { HasOne, HasMany, BelongsTo, BelongsToMany } from './Relations';
+import {
+    HasOne, HasMany, BelongsTo, BelongsToMany,
+    HasOneThrough, HasManyThrough,
+    MorphOne, MorphMany, MorphTo,
+} from './Relations';
+import { ObserverRegistry, ModelObserver } from './Observer';
+import { GlobalScopeRegistry, GlobalScope, CallbackGlobalScope } from './GlobalScope';
 
 /**
  * Base Model class for Active Record pattern
@@ -57,11 +63,86 @@ export class Model {
     protected relations: Record<string, any> = {};
 
     /**
+     * The attributes that should be cast to native types.
+     */
+    protected casts: Record<string, 'int' | 'integer' | 'real' | 'float' | 'double' | 'string' | 'bool' | 'boolean' | 'object' | 'array' | 'json' | 'date' | 'datetime' | 'timestamp'> = {};
+
+    constructor() {
+        return new Proxy(this, {
+            get(target: any, prop: string | symbol, receiver: any) {
+                if (Reflect.has(target, prop)) {
+                    return Reflect.get(target, prop, receiver);
+                }
+
+                if (typeof prop === 'string') {
+                    // Check if it's a loaded relationship first
+                    if (target.relations && prop in target.relations) {
+                        return target.relations[prop];
+                    }
+                    return target.getAttribute(prop);
+                }
+
+                return undefined;
+            },
+            set(target: any, prop: string | symbol, value: any, receiver: any) {
+                if (Reflect.has(target, prop)) {
+                    return Reflect.set(target, prop, value, receiver);
+                }
+
+                if (typeof prop === 'string') {
+                    target.setAttribute(prop, value);
+                    return true;
+                }
+
+                return false;
+            }
+        });
+    }
+
+    /**
      * Create a new query builder for the model
      */
     static query<T extends Model>(this: typeof Model): ModelQueryBuilder<T> {
         const queryBuilder = Database.table(this.getTableName(), this.getConnectionName());
-        return new ModelQueryBuilder(queryBuilder, this as any);
+        const mqb = new ModelQueryBuilder<T>(queryBuilder, this as any);
+        // Apply all registered global scopes
+        GlobalScopeRegistry.applyAll(this.name, mqb, this);
+        return mqb;
+    }
+
+    /**
+     * Register an observer for this model
+     */
+    static observe(observer: ModelObserver): void {
+        ObserverRegistry.register(this.name, observer);
+    }
+
+    /**
+     * Add a global scope to this model
+     */
+    static addGlobalScope(
+        name: string,
+        scope: GlobalScope | ((builder: any, model: any) => void)
+    ): void {
+        const resolvedScope = typeof scope === 'function'
+            ? new CallbackGlobalScope(scope as (builder: any, model: any) => void)
+            : scope;
+        GlobalScopeRegistry.register(this.name, name, resolvedScope);
+    }
+
+    /**
+     * Remove a named global scope from this model
+     */
+    static removeGlobalScope(name: string): void {
+        GlobalScopeRegistry.remove(this.name, name);
+    }
+
+    /**
+     * Run a query without any global scopes
+     */
+    static withoutGlobalScopes<T extends Model>(this: typeof Model): ModelQueryBuilder<T> {
+        const queryBuilder = Database.table(this.getTableName(), this.getConnectionName());
+        return new ModelQueryBuilder<T>(queryBuilder, this as any);
     }
 
     /**
@@ -160,6 +241,13 @@ export class Model {
     }
 
     /**
+     * Insert a record or multiple records (Bulk Insert)
+     */
+    static async insert<T extends Model>(this: typeof Model, data: Record<string, any> | Record<string, any>[]): Promise<any> {
+        return this.query<T>().insert(data);
+    }
+
+    /**
      * Get the first record
      */
     static async first<T extends Model>(this: typeof Model): Promise<T | null> {
@@ -174,10 +262,24 @@ export class Model {
     }
 
     /**
+     * Paginate the models
+     */
+    static async paginate<T extends Model>(this: typeof Model, page: number = 1, perPage: number = 15): Promise<{ data: T[], meta: any }> {
+        return this.query<T>().paginate(page, perPage);
+    }
+
+    /**
      * Get the count of records
      */
     static async count(this: typeof Model, column?: string): Promise<number> {
         return this.query().count(column);
+    }
+
+    /**
+     * Cache the query results
+     */
+    static cache<T extends Model>(this: typeof Model, ttl: number, key?: string): ModelQueryBuilder<T> {
+        return this.query<T>().cache(ttl, key);
     }
 
     /**
@@ -245,20 +347,106 @@ export class Model {
         return constructor.getPrimaryKeyName();
     }
 
+    // ==================== Casts & Mutators ====================
+
+    /**
+     * Convert string into studly case (e.g. first_name -> FirstName)
+     */
+    private studly(value: string): string {
+        return value.replace(/(?:^|_)(.)/g, (_, c) => c.toUpperCase());
+    }
+
+    /**
+     * Cast an attribute to a native type.
+     */
+    protected castAttribute(key: string, value: any): any {
+        if (value === null || value === undefined) {
+            return value;
+        }
+
+        const castType = this.casts[key];
+        if (!castType) {
+            return value;
+        }
+
+        switch (castType) {
+            case 'int':
+            case 'integer':
+                return parseInt(value, 10);
+            case 'real':
+            case 'float':
+            case 'double':
+                return parseFloat(value);
+            case 'string':
+                return String(value);
+            case 'bool':
+            case 'boolean':
+                return value === 'true' || value === '1' || value === 1 || value === true;
+            case 'object':
+            case 'array':
+            case 'json':
+                return typeof value === 'string' ? JSON.parse(value) : value;
+            case 'date':
+            case 'datetime':
+            case 'timestamp':
+                return new Date(value);
+            default:
+                return value;
+        }
+    }
+
+    /**
+     * Cast an attribute to a native type for DB.
+     */
+    protected castAttributeForSave(key: string, value: any): any {
+        if (value === null || value === undefined) {
+            return value;
+        }
+
+        const castType = this.casts[key];
+        if (!castType) {
+            return value;
+        }
+
+        switch (castType) {
+            case 'object':
+            case 'array':
+            case 'json':
+                return typeof value === 'object' ? JSON.stringify(value) : value;
+            case 'date':
+            case 'datetime':
+            case 'timestamp':
+                return value instanceof Date ? value.toISOString() : value;
+            default:
+                return value;
+        }
+    }
+
     // ==================== Instance Methods ====================
 
     /**
      * Get an attribute value
      */
     getAttribute(key: string): any {
-        return this.attributes[key];
+        const accessorMethod = `get${this.studly(key)}Attribute`;
+        if (typeof (this as any)[accessorMethod] === 'function') {
+            return (this as any)[accessorMethod](this.attributes[key]);
+        }
+
+        return this.castAttribute(key, this.attributes[key]);
     }
 
     /**
      * Set an attribute value
      */
     setAttribute(key: string, value: any): void {
-        this.attributes[key] = value;
+        const mutatorMethod = `set${this.studly(key)}Attribute`;
+        if (typeof (this as any)[mutatorMethod] === 'function') {
+            (this as any)[mutatorMethod](value);
+            return;
+        }
+
+        this.attributes[key] = this.castAttributeForSave(key, value);
     }
 
     /**
@@ -275,10 +463,14 @@ export class Model {
      * Save the model to the database
      */
     async save(): Promise<boolean> {
+        const modelName = (this.constructor as typeof Model).name;
         const query = Database.table(this.getTable(), this.getConnection());
 
         if (this.exists) {
-            // Update existing record
+            // Fire saving + updating events
+            if (await ObserverRegistry.fire(modelName, 'saving', this) === false) return false;
+            if (await ObserverRegistry.fire(modelName, 'updating', this) === false) return false;
+
             const primaryKey = this.getPrimaryKey();
             const id = this.attributes[primaryKey];
 
@@ -293,12 +485,18 @@ export class Model {
 
             await query.where(primaryKey, id).update(dirty);
             this.syncOriginal();
+
+            // Fire saved + updated events
+            await ObserverRegistry.fire(modelName, 'updated', this);
+            await ObserverRegistry.fire(modelName, 'saved', this);
             return true;
         } else {
-            // Insert new record
+            // Fire saving + creating events
+            if (await ObserverRegistry.fire(modelName, 'saving', this) === false) return false;
+            if (await ObserverRegistry.fire(modelName, 'creating', this) === false) return false;
+
             const result = await query.insert(this.attributes);
 
-            // Set the primary key if it was auto-generated
             const primaryKey = this.getPrimaryKey();
             if (result && result.insertId && !this.attributes[primaryKey]) {
                 this.attributes[primaryKey] = result.insertId;
@@ -306,6 +504,10 @@ export class Model {
 
             this.exists = true;
             this.syncOriginal();
+
+            // Fire created + saved events
+            await ObserverRegistry.fire(modelName, 'created', this);
+            await ObserverRegistry.fire(modelName, 'saved', this);
             return true;
         }
     }
@@ -314,6 +516,8 @@ export class Model {
      * Delete the model from the database
      */
     async deleteInstance(): Promise<boolean> {
+        const modelName = (this.constructor as typeof Model).name;
+
         if (!this.exists) {
             return false;
         }
@@ -325,10 +529,16 @@ export class Model {
             throw new Error('Cannot delete model without primary key value');
         }
 
+        // Fire deleting event
+        if (await ObserverRegistry.fire(modelName, 'deleting', this) === false) return false;
+
         const query = Database.table(this.getTable(), this.getConnection());
         await query.where(primaryKey, id).delete();
 
         this.exists = false;
+
+        // Fire deleted event
+        await ObserverRegistry.fire(modelName, 'deleted', this);
         return true;
     }
 
@@ -463,14 +673,106 @@ export class Model {
     ): BelongsToMany<T> {
         const relatedTable = (related as any).table;
         const thisTable = this.getTable();
-
         const pivot = pivotTable || [thisTable, relatedTable].sort().join('_');
         const fpk = foreignPivotKey || `${thisTable}_id`;
         const rpk = relatedPivotKey || `${relatedTable}_id`;
         const pk = parentKey || this.getPrimaryKey();
         const rk = relatedKey || 'id';
-
         return new BelongsToMany<T>(related, this, pivot, fpk, rpk, pk, rk);
+    }
+
+    /**
+     * Define a has-one-through relationship
+     *
+     * Example: Country → hasOneThrough(Capital, Province, 'country_id', 'province_id')
+     */
+    protected hasOneThrough<T extends Model>(
+        related: typeof Model,
+        through: typeof Model,
+        firstKey?: string,
+        secondKey?: string,
+        localKey: string = 'id',
+        secondLocalKey: string = 'id'
+    ): HasOneThrough<T> {
+        const throughTable = (through as any).table;
+        const fk = firstKey || `${this.getTable()}_id`;
+        const sk = secondKey || `${throughTable}_id`;
+        return new HasOneThrough<T>(related, this, through, fk, sk, localKey, secondLocalKey);
+    }
+
+    /**
+     * Define a has-many-through relationship
+     *
+     * Example: Country → hasManyThrough(Post, User, 'country_id', 'user_id')
+     */
+    protected hasManyThrough<T extends Model>(
+        related: typeof Model,
+        through: typeof Model,
+        firstKey?: string,
+        secondKey?: string,
+        localKey: string = 'id',
+        secondLocalKey: string = 'id'
+    ): HasManyThrough<T> {
+        const throughTable = (through as any).table;
+        const fk = firstKey || `${this.getTable()}_id`;
+        const sk = secondKey || `${throughTable}_id`;
+        return new HasManyThrough<T>(related, this, through, fk, sk, localKey, secondLocalKey);
+    }
+
+    /**
+     * Define a polymorphic has-one relationship
+     *
+     * Example: Post → morphOne(Image, 'imageable')
+     */
+    protected morphOne<T extends Model>(
+        related: typeof Model,
+        morphName: string,
+        localKey: string = 'id'
+    ): MorphOne<T> {
+        return new MorphOne<T>(
+            related, this,
+            morphName,
+            `${morphName}_type`,
+            `${morphName}_id`,
+            localKey
+        );
+    }
+
+    /**
+     * Define a polymorphic has-many relationship
+     *
+     * Example: Post → morphMany(Comment, 'commentable')
+     */
+    protected morphMany<T extends Model>(
+        related: typeof Model,
+        morphName: string,
+        localKey: string = 'id'
+    ): MorphMany<T> {
+        return new MorphMany<T>(
+            related, this,
+            morphName,
+            `${morphName}_type`,
+            `${morphName}_id`,
+            localKey
+        );
+    }
+
+    /**
+     * Define the inverse of a polymorphic relationship
+     *
+     * Example: Comment → morphTo('commentable')
+     */
+    protected morphTo(
+        morphName: string,
+        morphMap: Record<string, typeof Model> = {}
+    ): MorphTo {
+        return new MorphTo(
+            this,
+            morphName,
+            `${morphName}_type`,
+            `${morphName}_id`,
+            morphMap
+        );
     }
 
     /**
@@ -489,13 +791,26 @@ export class Model {
     }
 
     /**
-     * Load a relationship
+     * Eagerly load a relationship on this instance
      */
-    async load(relation: string): Promise<this> {
-        if (typeof (this as any)[relation] === 'function') {
-            const relationInstance = (this as any)[relation]();
-            const result = await relationInstance.get();
-            this.setRelation(relation, result);
+    async load(...relationNames: string[]): Promise<this> {
+        for (const relation of relationNames) {
+            if (typeof (this as any)[relation] === 'function') {
+                const relationInstance = (this as any)[relation]();
+                const result = await relationInstance.get();
+                this.setRelation(relation, result);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Load relationships only if they haven't been loaded yet
+     */
+    async loadMissing(...relationNames: string[]): Promise<this> {
+        const toLoad = relationNames.filter(name => !(name in this.relations));
+        if (toLoad.length > 0) {
+            await this.load(...toLoad);
         }
         return this;
     }
@@ -555,6 +870,13 @@ export class ModelQueryBuilder<T extends Model> {
         instance.setExists(true);
         instance['syncOriginal']();
         return instance;
+    }
+
+    /**
+     * Insert a record or multiple records natively (Bulk Insert)
+     */
+    async insert(data: Record<string, any> | Record<string, any>[]): Promise<any> {
+        return await this.queryBuilder.insert(data);
     }
 
     /**
@@ -678,6 +1000,14 @@ export class ModelQueryBuilder<T extends Model> {
     }
 
     /**
+     * Cache the query results
+     */
+    cache(ttl: number, key?: string): this {
+        this.queryBuilder.cache(ttl, key);
+        return this;
+    }
+
+    /**
      * Eager load relationships
      */
     with(relations: string | string[] | Record<string, (q: QueryBuilder) => void>): this {
@@ -691,6 +1021,146 @@ export class ModelQueryBuilder<T extends Model> {
             });
         }
         return this;
+    }
+
+    /**
+     * Include subqueries to count given relationships
+     */
+    withCount(relations: string | string[]): this {
+        const relationNames = Array.isArray(relations) ? relations : [relations];
+        const dummy = new this.modelClass();
+        const outerTable = (dummy as any).getTable();
+
+        for (const rel of relationNames) {
+            if (typeof (dummy as any)[rel] !== 'function') {
+                throw new Error(`Relation ${rel} does not exist on model ${dummy.constructor.name}`);
+            }
+
+            const relationInstance = (dummy as any)[rel]();
+            if (typeof relationInstance.getRelationCountQuery !== 'function') {
+                throw new Error(`Relation ${rel} does not support withCount natively`);
+            }
+
+            const { sql, bindings } = relationInstance.getRelationCountQuery(outerTable);
+            this.queryBuilder.selectRaw(`${sql} AS ${rel}_count`, bindings);
+        }
+
+        return this;
+    }
+
+    /**
+     * Add a basic where clause using a related model (WHERE EXISTS)
+     */
+    whereHas(relation: string, callback?: (q: QueryBuilder) => void): this {
+        const dummy = new this.modelClass();
+        const outerTable = (dummy as any).getTable();
+
+        if (typeof (dummy as any)[relation] !== 'function') {
+            throw new Error(`Relation ${relation} does not exist on model ${dummy.constructor.name}`);
+        }
+
+        const relationInstance = (dummy as any)[relation]();
+
+        this.queryBuilder.whereExists((q) => {
+            const { sql, bindings } = relationInstance.getRelationCountQuery(outerTable);
+            // Replace SELECT COUNT(*) with SELECT 1 for EXISTS optimization
+            const existsSql = sql.replace(/^\(SELECT COUNT\(\*\)/i, '(SELECT 1');
+            q.selectRaw(existsSql.slice(1, -1), bindings); // remove outer parens because whereExists adds them
+
+            if (callback) {
+                callback(q);
+            }
+        });
+
+        return this;
+    }
+
+    /**
+     * Add a basic where clause for absence of a related model (WHERE NOT EXISTS)
+     */
+    whereDoesntHave(relation: string, callback?: (q: QueryBuilder) => void): this {
+        const dummy = new this.modelClass();
+        const outerTable = (dummy as any).getTable();
+
+        if (typeof (dummy as any)[relation] !== 'function') {
+            throw new Error(`Relation ${relation} does not exist on model ${dummy.constructor.name}`);
+        }
+
+        const relationInstance = (dummy as any)[relation]();
+
+        this.queryBuilder.whereNotExists((q) => {
+            const { sql, bindings } = relationInstance.getRelationCountQuery(outerTable);
+            const existsSql = sql.replace(/^\(SELECT COUNT\(\*\)/i, '(SELECT 1');
+            q.selectRaw(existsSql.slice(1, -1), bindings);
+
+            if (callback) {
+                callback(q);
+            }
+        });
+
+        return this;
+    }
+
+    /**
+     * Paginate the query results
+     */
+    async paginate(page: number = 1, perPage: number = 15, path: string = '/'): Promise<{ data: T[], meta: any, links: any }> {
+        const paginatedResult = await this.queryBuilder.paginate(page, perPage, path);
+
+        // Map and load relations
+        const models = paginatedResult.data.map(data => this.hydrate(data));
+        const finalModels = await this.loadRelations(models);
+
+        return {
+            data: finalModels,
+            meta: paginatedResult.meta,
+            links: paginatedResult.links
+        };
+    }
+
+    /**
+     * Paginate the query results without counting total pages
+     */
+    async simplePaginate(page: number = 1, perPage: number = 15, path: string = '/'): Promise<{ data: T[], meta: any, links: any }> {
+        const paginatedResult = await this.queryBuilder.simplePaginate(page, perPage, path);
+
+        // Map and load relations
+        const models = paginatedResult.data.map(data => this.hydrate(data));
+        const finalModels = await this.loadRelations(models);
+
+        return {
+            data: finalModels,
+            meta: paginatedResult.meta,
+            links: paginatedResult.links
+        };
+    }
+
+    /**
+     * Cursor paginate for high performance
+     */
+    async cursorPaginate(cursor: string | null = null, perPage: number = 15, cursorColumn: string = 'id', path: string = '/'): Promise<{ data: T[], meta: any, links: any }> {
+        const paginatedResult = await this.queryBuilder.cursorPaginate(cursor, perPage, cursorColumn, path);
+
+        // Map and load relations
+        const models = paginatedResult.data.map(data => this.hydrate(data));
+        const finalModels = await this.loadRelations(models);
+
+        return {
+            data: finalModels,
+            meta: paginatedResult.meta,
+            links: paginatedResult.links
+        };
+    }
+
+    /**
+     * Chunk the query results
+     */
+    async chunk(count: number, callback: (models: T[], page: number) => Promise<boolean | void>): Promise<boolean> {
+        return this.queryBuilder.chunk(count, async (results, page) => {
+            const models = results.map(data => this.hydrate(data));
+            const finalModels = await this.loadRelations(models);
+            return callback(finalModels, page);
+        });
     }
 
     /**

@@ -116,6 +116,11 @@ export interface Blueprint {
      * Drop an index
      */
     dropIndex(name: string): void;
+
+    /**
+     * Drop a foreign key constraint
+     */
+    dropForeignKey(name: string): void;
 }
 
 /**

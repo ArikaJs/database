@@ -10,8 +10,8 @@
     "build:tests": "tsc -p tsconfig.test.json",
     "clean": "rm -rf dist",
     "prepare": "echo skip",
-    "test": "npm run build && npm run build:tests && node scripts/fix-test-imports.js && node --test 'dist/tests/**/*.test.js'",
-    "test:watch": "npm run build && npm run build:tests && node --test --watch 'dist/tests/**/*.test.js'"
+    "test": "npx tsx tests/Database.test.ts",
+    "test:watch": "npx tsx --watch tests/Database.test.ts"
   },
   "files": [
     "dist"
@@ -40,11 +40,13 @@
   "homepage": "https://github.com/arikajs/database#readme",
   "dependencies": {
     "better-sqlite3": "^11.7.0",
+    "mongodb": "^7.1.0",
     "mysql2": "^3.11.5",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/mongodb": "^4.0.6",
     "@types/node": "^20.11.24",
     "@types/pg": "^8.11.10",
     "typescript": "^5.3.3"
