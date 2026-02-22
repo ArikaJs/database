@@ -43,6 +43,16 @@ export class Model {
     protected primaryKey: string = 'id';
 
     /**
+     * Indicates if the model should use timestamps
+     */
+    protected static timestamps: boolean = true;
+
+    /**
+     * Indicates if dates should be serialized to UTC (ISO string) or Local string
+     */
+    protected static serializeDateAsUtc: boolean = false;
+
+    /**
      * Indicates if the model exists in the database
      */
     protected exists: boolean = false;
@@ -404,6 +414,12 @@ export class Model {
         }
 
         const castType = this.casts[key];
+
+        // Always format dates even if not explicitly in casts for timestamps
+        if (value instanceof Date) {
+            return this.formatDate(value);
+        }
+
         if (!castType) {
             return value;
         }
@@ -416,10 +432,23 @@ export class Model {
             case 'date':
             case 'datetime':
             case 'timestamp':
-                return value instanceof Date ? value.toISOString() : value;
+                return value instanceof Date ? this.formatDate(value) : value;
             default:
                 return value;
         }
+    }
+
+    /**
+     * Format a date for database and JSON serialization
+     */
+    protected formatDate(date: Date): string {
+        if ((this.constructor as typeof Model).serializeDateAsUtc) {
+            return date.toISOString();
+        }
+
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+            `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     }
 
     // ==================== Instance Methods ====================
@@ -478,6 +507,10 @@ export class Model {
                 throw new Error('Cannot update model without primary key value');
             }
 
+            if (this.usesTimestamps()) {
+                this.updateTimestamps();
+            }
+
             const dirty = this.getDirty();
             if (Object.keys(dirty).length === 0) {
                 return true; // No changes to save
@@ -494,6 +527,10 @@ export class Model {
             // Fire saving + creating events
             if (await ObserverRegistry.fire(modelName, 'saving', this) === false) return false;
             if (await ObserverRegistry.fire(modelName, 'creating', this) === false) return false;
+
+            if (this.usesTimestamps()) {
+                this.updateTimestamps();
+            }
 
             const result = await query.insert(this.attributes);
 
@@ -513,9 +550,17 @@ export class Model {
     }
 
     /**
+     * Update the model with an array of attributes
+     */
+    async update(attributes: Record<string, any>): Promise<boolean> {
+        this.fill(attributes);
+        return await this.save();
+    }
+
+    /**
      * Delete the model from the database
      */
-    async deleteInstance(): Promise<boolean> {
+    async delete(): Promise<boolean> {
         const modelName = (this.constructor as typeof Model).name;
 
         if (!this.exists) {
@@ -601,6 +646,28 @@ export class Model {
     }
 
     /**
+     * Check if the model uses timestamps
+     */
+    public usesTimestamps(): boolean {
+        return (this.constructor as typeof Model).timestamps;
+    }
+
+    /**
+     * Update the model's timestamps
+     */
+    protected updateTimestamps(): void {
+        const now = new Date();
+
+        if (this.usesTimestamps()) {
+            this.setAttribute('updated_at', now);
+
+            if (!this.exists && !this.getAttribute('created_at')) {
+                this.setAttribute('created_at', now);
+            }
+        }
+    }
+
+    /**
      * Mark the model as existing
      */
     setExists(exists: boolean): this {
@@ -612,9 +679,28 @@ export class Model {
      * Convert the model to a plain object
      */
     toJSON(): Record<string, any> {
+        const attributes = { ...this.attributes };
+
+        // Handle date formatting in attributes
+        for (const [key, value] of Object.entries(attributes)) {
+            if (value instanceof Date) {
+                attributes[key] = this.formatDate(value);
+            }
+        }
+
+        const relations = { ...this.relations };
+        // Handle date formatting in relations (recursive for nested models)
+        for (const [key, value] of Object.entries(relations)) {
+            if (value instanceof Model) {
+                relations[key] = value.toJSON();
+            } else if (Array.isArray(value)) {
+                relations[key] = value.map(item => item instanceof Model ? item.toJSON() : item);
+            }
+        }
+
         return {
-            ...this.attributes,
-            ...this.relations,
+            ...attributes,
+            ...relations,
         };
     }
 
@@ -858,8 +944,16 @@ export class ModelQueryBuilder<T extends Model> {
      * Create a new record
      */
     async create(data: Record<string, any>): Promise<T> {
+        let instance = new this.modelClass();
+
+        if (instance.usesTimestamps()) {
+            const now = new Date();
+            data['created_at'] = data['created_at'] || now;
+            data['updated_at'] = data['updated_at'] || now;
+        }
+
         const result = await this.queryBuilder.insert(data);
-        const instance = this.hydrate(data);
+        instance = this.hydrate(data);
 
         // Set the primary key if it was auto-generated
         const primaryKey = instance['getPrimaryKey']();
