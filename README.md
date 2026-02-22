@@ -316,26 +316,51 @@ await Schema.dropIfExists('users');
 
 ---
 
-## 🧩 Architecture Overview
+## 🏗 Architecture
 
-```
+```text
 database/
 ├── src/
-│   ├── Connections/
-│   │   ├── MySQLConnection
-│   │   ├── PostgreSQLConnection
-│   │   └── SQLiteConnection
-│   ├── Model/
-│   │   ├── Model
-│   │   ├── Relations
-│   │   └── SoftDeletes
-│   ├── QueryBuilder
+│   ├── Connections
+│   │   ├── MongoDBConnection.ts
+│   │   ├── MySQLConnection.ts
+│   │   ├── PostgreSQLConnection.ts
+│   │   └── SQLiteConnection.ts
+│   ├── Contracts
+│   │   ├── Database.ts
+│   │   └── Schema.ts
+│   ├── Migrations
+│   │   ├── Migration.ts
+│   │   └── Migrator.ts
+│   ├── Model
+│   │   ├── GlobalScope.ts
+│   │   ├── Model.ts
+│   │   ├── Observer.ts
+│   │   ├── Relations.ts
+│   │   └── SoftDeletes.ts
+│   ├── Query
+│   │   ├── Expression.ts
+│   │   ├── QueryBuilder.ts
+│   │   └── QueryLogger.ts
 │   ├── Schema
-│   ├── DatabaseManager
-│   └── Facades/
-│       └── DB
-├── config/
-│   └── database.ts
+│   │   ├── Grammars
+│   │   │   ├── Grammar.ts
+│   │   │   ├── MySQLGrammar.ts
+│   │   │   ├── PostgreSQLGrammar.ts
+│   │   │   └── SQLiteGrammar.ts
+│   │   ├── Schema.ts
+│   │   └── SchemaBuilder.ts
+│   ├── Seeders
+│   │   ├── Seeder.ts
+│   │   └── SeedRunner.ts
+│   ├── Transactions
+│   │   └── TransactionManager.ts
+│   ├── Database.ts
+│   ├── DatabaseManager.ts
+│   └── index.ts
+├── tests/
+├── package.json
+├── tsconfig.json
 └── README.md
 ```
 
@@ -669,54 +694,6 @@ await User.chunk(1000, async (users, page) => {
 - No breaking changes without major version bump
 
 ---
-
-## 🏗 Architecture
-
-```text
-database/
-├── src/
-│   ├── Connections
-│   │   ├── MongoDBConnection.ts
-│   │   ├── MySQLConnection.ts
-│   │   ├── PostgreSQLConnection.ts
-│   │   └── SQLiteConnection.ts
-│   ├── Contracts
-│   │   ├── Database.ts
-│   │   └── Schema.ts
-│   ├── Migrations
-│   │   ├── Migration.ts
-│   │   └── Migrator.ts
-│   ├── Model
-│   │   ├── GlobalScope.ts
-│   │   ├── Model.ts
-│   │   ├── Observer.ts
-│   │   ├── Relations.ts
-│   │   └── SoftDeletes.ts
-│   ├── Query
-│   │   ├── Expression.ts
-│   │   ├── QueryBuilder.ts
-│   │   └── QueryLogger.ts
-│   ├── Schema
-│   │   ├── Grammars
-│   │   │   ├── Grammar.ts
-│   │   │   ├── MySQLGrammar.ts
-│   │   │   ├── PostgreSQLGrammar.ts
-│   │   │   └── SQLiteGrammar.ts
-│   │   ├── Schema.ts
-│   │   └── SchemaBuilder.ts
-│   ├── Seeders
-│   │   ├── Seeder.ts
-│   │   └── SeedRunner.ts
-│   ├── Transactions
-│   │   └── TransactionManager.ts
-│   ├── Database.ts
-│   ├── DatabaseManager.ts
-│   └── index.ts
-├── tests/
-├── package.json
-├── tsconfig.json
-└── README.md
-```
 
 ## 📄 License
 
