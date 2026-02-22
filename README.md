@@ -1,7 +1,7 @@
 # @arikajs/database
 
 **@arikajs/database** is the official database layer for the ArikaJS framework.  
-It provides a powerful, extensible, and framework-integrated database system inspired by Laravel's Eloquent & Query Builder — but designed natively for **Node.js & TypeScript**.
+It provides a powerful, extensible, and framework-integrated database system with an elegant, fluent API — but designed natively for **Node.js & TypeScript**.
 
 This package powers **DB facade**, **Models**, **Migrations**, and **Query Builder** across all ArikaJS applications.
 
@@ -507,7 +507,7 @@ Post.addGlobalScope('tenant', new TenantScope(currentTenantId));
 
 ### 🔗 Advanced Relationships
 
-ArikaJS supports advanced relationship types, bringing you power usually found only in heavy ORMs like Laravel's Eloquent.
+ArikaJS supports advanced relationship types, bringing you power usually found only in heavy, complex ORMs.
 
 #### Through Relationships
 Relate models through an intermediate model.
@@ -643,7 +643,7 @@ await User.chunk(1000, async (users, page) => {
 - One Query Builder
 - No hidden globals
 - Predictable SQL
-- Laravel-like DX, Node.js performance
+- Elegant DX, Node.js performance
 
 ---
 
@@ -663,6 +663,54 @@ await User.chunk(1000, async (users, page) => {
 - No breaking changes without major version bump
 
 ---
+
+## 🏗 Architecture
+
+```text
+database/
+├── src/
+│   ├── Connections
+│   │   ├── MongoDBConnection.ts
+│   │   ├── MySQLConnection.ts
+│   │   ├── PostgreSQLConnection.ts
+│   │   └── SQLiteConnection.ts
+│   ├── Contracts
+│   │   ├── Database.ts
+│   │   └── Schema.ts
+│   ├── Migrations
+│   │   ├── Migration.ts
+│   │   └── Migrator.ts
+│   ├── Model
+│   │   ├── GlobalScope.ts
+│   │   ├── Model.ts
+│   │   ├── Observer.ts
+│   │   ├── Relations.ts
+│   │   └── SoftDeletes.ts
+│   ├── Query
+│   │   ├── Expression.ts
+│   │   ├── QueryBuilder.ts
+│   │   └── QueryLogger.ts
+│   ├── Schema
+│   │   ├── Grammars
+│   │   │   ├── Grammar.ts
+│   │   │   ├── MySQLGrammar.ts
+│   │   │   ├── PostgreSQLGrammar.ts
+│   │   │   └── SQLiteGrammar.ts
+│   │   ├── Schema.ts
+│   │   └── SchemaBuilder.ts
+│   ├── Seeders
+│   │   ├── Seeder.ts
+│   │   └── SeedRunner.ts
+│   ├── Transactions
+│   │   └── TransactionManager.ts
+│   ├── Database.ts
+│   ├── DatabaseManager.ts
+│   └── index.ts
+├── tests/
+├── package.json
+├── tsconfig.json
+└── README.md
+```
 
 ## 📄 License
 
