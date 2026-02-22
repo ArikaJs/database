@@ -1,5 +1,11 @@
 # @arikajs/database
 
+<div align="center">
+
+![ArikaJS Logo](http://13.232.79.11:7800/down/oZ9NpyKtAQzK.png)
+
+</div>
+
 **@arikajs/database** is the official database layer for the ArikaJS framework.  
 It provides a powerful, extensible, and framework-integrated database system with an elegant, fluent API — but designed natively for **Node.js & TypeScript**.
 
