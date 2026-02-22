@@ -117,9 +117,8 @@ export class Migrator {
     private async resolve(file: string): Promise<any> {
         const fullPath = path.resolve(this.migrationsPath, file);
 
-        // In Node.js, we can use dynamic import
-        // If we are running in TS-Node environment, it will work for .ts files
-        const module = require(fullPath);
+        // Use dynamic import so tsx can handle .ts migration files
+        const module = await import(fullPath);
 
         // Check for default export or named export
         let MigrationClass = module.default || module;
