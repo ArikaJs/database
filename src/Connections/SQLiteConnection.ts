@@ -30,7 +30,10 @@ export class SQLiteConnection implements Connection {
         }
 
         if (!this.db) {
-            this.db = new Database(readConfig.database || ':memory:');
+            const dbPath = readConfig.database || ':memory:';
+            // If config has explicit read/write split, open read DB read-only
+            const isReadOnly = !!(this.config.read && this.config.write);
+            this.db = new Database(dbPath, { readonly: isReadOnly });
         }
 
         if (this.config.write && !this.writeDb) {
@@ -61,6 +64,12 @@ export class SQLiteConnection implements Connection {
             await this.connect();
         }
 
+        const preparedBindings = bindings.map(b => {
+            if (b instanceof Date) return b.toISOString();
+            if (typeof b === 'boolean') return b ? 1 : 0;
+            return b;
+        });
+
         const isWriteOperation = /^\s*(?:insert|update|delete|create|alter|drop|truncate|replace)/i.test(sql);
         const connection = (isWriteOperation && this.writeDb) ? this.writeDb : this.db!;
 
@@ -69,11 +78,11 @@ export class SQLiteConnection implements Connection {
 
             // Check if it's a SELECT query
             if (!isWriteOperation && sql.trim().toLowerCase().startsWith('select')) {
-                return stmt.all(...bindings);
+                return stmt.all(...preparedBindings);
             }
 
             // For INSERT, UPDATE, DELETE
-            const info = stmt.run(...bindings);
+            const info = stmt.run(...preparedBindings);
             return [{ affectedRows: info.changes, insertId: info.lastInsertRowid }];
         } catch (error: any) {
             throw new Error(`SQLite query failed: ${error.message}`);

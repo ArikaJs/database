@@ -73,6 +73,16 @@ export class Model {
     protected relations: Record<string, any> = {};
 
     /**
+     * The attributes that should be hidden for serialization.
+     */
+    protected hidden: string[] = [];
+
+    /**
+     * The attributes that should be visible for serialization.
+     */
+    protected visible: string[] = [];
+
+    /**
      * The attributes that should be cast to native types.
      */
     protected casts: Record<string, 'int' | 'integer' | 'real' | 'float' | 'double' | 'string' | 'bool' | 'boolean' | 'object' | 'array' | 'json' | 'date' | 'datetime' | 'timestamp'> = {};
@@ -679,7 +689,7 @@ export class Model {
      * Convert the model to a plain object
      */
     toJSON(): Record<string, any> {
-        const attributes = { ...this.attributes };
+        let attributes = { ...this.attributes };
 
         // Handle date formatting in attributes
         for (const [key, value] of Object.entries(attributes)) {
@@ -688,7 +698,7 @@ export class Model {
             }
         }
 
-        const relations = { ...this.relations };
+        let relations = { ...this.relations };
         // Handle date formatting in relations (recursive for nested models)
         for (const [key, value] of Object.entries(relations)) {
             if (value instanceof Model) {
@@ -698,10 +708,26 @@ export class Model {
             }
         }
 
-        return {
+        let result = {
             ...attributes,
             ...relations,
         };
+
+        // Filter hidden/visible attributes
+        if (this.visible.length > 0) {
+            result = Object.keys(result)
+                .filter(key => this.visible.includes(key))
+                .reduce((obj: any, key) => {
+                    obj[key] = result[key];
+                    return obj;
+                }, {});
+        } else if (this.hidden.length > 0) {
+            this.hidden.forEach(key => {
+                delete result[key];
+            });
+        }
+
+        return result;
     }
 
     // ==================== Relationship Methods ====================
